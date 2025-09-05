@@ -1,0 +1,16 @@
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.pdf
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+.env
+*.pyc
+__pycache__/
+.pytest_cache/
+cybergraph_exp/results/experiment_*.json
+cybergraph_exp/results/tables.tex
