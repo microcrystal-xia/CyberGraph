@@ -1,0 +1,189 @@
+{
+  "version": "1.0",
+  "queries": [
+    {
+      "id": 1,
+      "category": "simple_lookup",
+      "nl_query": "List all servers",
+      "expected_cypher": "MATCH (s:Server) RETURN s.name AS name, s.ip AS ip, s.os AS os, s.tier AS tier ORDER BY s.name",
+      "expected_result_count": 3,
+      "expected_values": ["web-server-01", "app-server-01", "db-server-01"]
+    },
+    {
+      "id": 2,
+      "category": "simple_lookup",
+      "nl_query": "Show all CVEs in the system",
+      "expected_cypher": "MATCH (c:CVE) RETURN c.id AS id, c.name AS name, c.cvss AS cvss, c.severity AS severity ORDER BY c.cvss DESC",
+      "expected_result_count": 2,
+      "expected_values": ["CVE-2021-44228", "CVE-2022-22965"]
+    },
+    {
+      "id": 3,
+      "category": "simple_lookup",
+      "nl_query": "List all microservices",
+      "expected_cypher": "MATCH (m:Microservice) RETURN m.name AS name, m.lang AS language, m.version AS version ORDER BY m.name",
+      "expected_result_count": 5,
+      "expected_values": ["user-portal", "auth-service", "payment-service", "order-service", "notification-service"]
+    },
+    {
+      "id": 4,
+      "category": "simple_lookup",
+      "nl_query": "Show all libraries used in the infrastructure",
+      "expected_cypher": "MATCH (l:Library) RETURN l.name AS name, l.version AS version, l.language AS language ORDER BY l.name",
+      "expected_result_count": 4,
+      "expected_values": ["log4j-core", "spring-boot", "express", "requests"]
+    },
+    {
+      "id": 5,
+      "category": "filtered_query",
+      "nl_query": "Which services use Java?",
+      "expected_cypher": "MATCH (m:Microservice {lang: 'Java'}) RETURN m.name AS name, m.version AS version ORDER BY m.name",
+      "expected_result_count": 3,
+      "expected_values": ["auth-service", "payment-service", "notification-service"]
+    },
+    {
+      "id": 6,
+      "category": "filtered_query",
+      "nl_query": "Find all externally exposed services",
+      "expected_cypher": "MATCH (m:Microservice {exposed: true}) RETURN m.name AS name, m.lang AS language ORDER BY m.name",
+      "expected_result_count": 1,
+      "expected_values": ["user-portal"]
+    },
+    {
+      "id": 7,
+      "category": "filtered_query",
+      "nl_query": "Which servers are in the backend tier?",
+      "expected_cypher": "MATCH (s:Server {tier: 'backend'}) RETURN s.name AS name, s.ip AS ip, s.os AS os ORDER BY s.name",
+      "expected_result_count": 1,
+      "expected_values": ["app-server-01"]
+    },
+    {
+      "id": 8,
+      "category": "filtered_query",
+      "nl_query": "What services are hosted on app-server-01?",
+      "expected_cypher": "MATCH (m:Microservice)-[:HOSTED_ON]->(s:Server {name: 'app-server-01'}) RETURN m.name AS name, m.lang AS language ORDER BY m.name",
+      "expected_result_count": 4,
+      "expected_values": ["auth-service", "payment-service", "order-service", "notification-service"]
+    },
+    {
+      "id": 9,
+      "category": "impact_analysis",
+      "nl_query": "What services are affected by Log4Shell?",
+      "expected_cypher": "MATCH path = (cve:CVE {id: 'CVE-2021-44228'})<-[:HAS_VULNERABILITY]-(lib:Library)<-[:DEPENDS_ON*1..5]-(svc:Microservice) RETURN svc.name AS service, length(path) AS depth ORDER BY depth",
+      "expected_result_count": 4,
+      "expected_values": ["payment-service", "notification-service"]
+    },
+    {
+      "id": 10,
+      "category": "impact_analysis",
+      "nl_query": "Which services are vulnerable to Spring4Shell?",
+      "expected_cypher": "MATCH path = (cve:CVE {id: 'CVE-2022-22965'})<-[:HAS_VULNERABILITY]-(lib:Library)<-[:DEPENDS_ON*1..5]-(svc:Microservice) RETURN svc.name AS service, length(path) AS depth ORDER BY depth",
+      "expected_result_count": 3,
+      "expected_values": ["auth-service", "payment-service"]
+    },
+    {
+      "id": 11,
+      "category": "impact_analysis",
+      "nl_query": "Find all services with critical vulnerabilities (CVSS >= 9.0)",
+      "expected_cypher": "MATCH (svc:Microservice)-[:DEPENDS_ON*1..5]->(lib:Library)-[:HAS_VULNERABILITY]->(cve:CVE) WHERE cve.cvss >= 9.0 RETURN svc.name AS service, cve.id AS cve_id, cve.cvss AS cvss ORDER BY cve.cvss DESC",
+      "expected_result_count": 5,
+      "expected_values": ["payment-service", "notification-service"]
+    },
+    {
+      "id": 12,
+      "category": "impact_analysis",
+      "nl_query": "Show PCI-scoped services affected by any CVE",
+      "expected_cypher": "MATCH (svc:Microservice {pci_scope: true})-[:DEPENDS_ON*1..5]->(lib:Library)-[:HAS_VULNERABILITY]->(cve:CVE) RETURN svc.name AS service, cve.id AS cve_id, cve.cvss AS cvss ORDER BY cve.cvss DESC",
+      "expected_result_count": 2,
+      "expected_values": ["payment-service"]
+    },
+    {
+      "id": 13,
+      "category": "blast_radius",
+      "nl_query": "What breaks if auth-service goes down?",
+      "expected_cypher": "MATCH (target:Microservice {name: 'auth-service'})<-[:DEPENDS_ON*1..5]-(affected:Microservice) RETURN affected.name AS service ORDER BY service",
+      "expected_result_count": 1,
+      "expected_values": ["user-portal"]
+    },
+    {
+      "id": 14,
+      "category": "blast_radius",
+      "nl_query": "What is the impact if payment-service fails?",
+      "expected_cypher": "MATCH (target:Microservice {name: 'payment-service'})<-[:DEPENDS_ON*1..5]-(affected:Microservice) RETURN affected.name AS service ORDER BY service",
+      "expected_result_count": 2,
+      "expected_values": ["user-portal", "auth-service"]
+    },
+    {
+      "id": 15,
+      "category": "blast_radius",
+      "nl_query": "Show upstream dependencies of notification-service",
+      "expected_cypher": "MATCH (target:Microservice {name: 'notification-service'})<-[:DEPENDS_ON*1..5]-(upstream:Microservice) RETURN upstream.name AS service ORDER BY service",
+      "expected_result_count": 0,
+      "expected_values": []
+    },
+    {
+      "id": 16,
+      "category": "blast_radius",
+      "nl_query": "What services depend on log4j?",
+      "expected_cypher": "MATCH (svc:Microservice)-[:DEPENDS_ON*1..5]->(lib:Library {name: 'log4j-core'}) RETURN svc.name AS service ORDER BY service",
+      "expected_result_count": 4,
+      "expected_values": ["payment-service", "notification-service"]
+    },
+    {
+      "id": 17,
+      "category": "multi_hop",
+      "nl_query": "Show the full dependency chain for user-portal",
+      "expected_cypher": "MATCH path = (root:Microservice {name: 'user-portal'})-[:DEPENDS_ON*1..5]->(dep) RETURN dep.name AS dependency, labels(dep)[0] AS type, length(path) AS depth ORDER BY depth",
+      "expected_result_count": 8,
+      "expected_values": ["auth-service", "payment-service", "log4j-core"]
+    },
+    {
+      "id": 18,
+      "category": "multi_hop",
+      "nl_query": "Trace the path from user-portal to Log4Shell vulnerability",
+      "expected_cypher": "MATCH path = (svc:Microservice {name: 'user-portal'})-[:DEPENDS_ON*1..5]->(lib:Library)-[:HAS_VULNERABILITY]->(cve:CVE {id: 'CVE-2021-44228'}) RETURN [n IN nodes(path) | n.name] AS chain, length(path) AS hops ORDER BY hops",
+      "expected_result_count": 2,
+      "expected_values": ["user-portal", "log4j-core", "CVE-2021-44228"]
+    },
+    {
+      "id": 19,
+      "category": "multi_hop",
+      "nl_query": "Show all dependencies of auth-service including transitive ones",
+      "expected_cypher": "MATCH path = (svc:Microservice {name: 'auth-service'})-[:DEPENDS_ON*1..5]->(dep) RETURN dep.name AS dependency, labels(dep)[0] AS type, length(path) AS depth ORDER BY depth",
+      "expected_result_count": 5,
+      "expected_values": ["payment-service", "spring-boot", "log4j-core"]
+    },
+    {
+      "id": 20,
+      "category": "aggregate",
+      "nl_query": "How many services have critical vulnerabilities?",
+      "expected_cypher": "MATCH (svc:Microservice)-[:DEPENDS_ON*1..5]->(lib:Library)-[:HAS_VULNERABILITY]->(cve:CVE) WHERE cve.cvss >= 9.0 RETURN count(DISTINCT svc) AS count",
+      "expected_result_count": 1,
+      "expected_values": []
+    },
+    {
+      "id": 21,
+      "category": "aggregate",
+      "nl_query": "Count services grouped by programming language",
+      "expected_cypher": "MATCH (m:Microservice) RETURN m.lang AS language, count(m) AS count ORDER BY count DESC",
+      "expected_result_count": 3,
+      "expected_values": ["Java", "Node.js", "Python"]
+    },
+    {
+      "id": 22,
+      "category": "negative",
+      "nl_query": "Is db-server-01 affected by any CVE?",
+      "expected_cypher": "MATCH (s:Server {name: 'db-server-01'})<-[:HOSTED_ON]-(svc:Microservice)-[:DEPENDS_ON*1..5]->(lib:Library)-[:HAS_VULNERABILITY]->(cve:CVE) RETURN svc.name AS service, cve.id AS cve_id",
+      "expected_result_count": 0,
+      "expected_values": []
+    },
+    {
+      "id": 23,
+      "category": "negative",
+      "nl_query": "Does order-service have any known vulnerability in its dependencies?",
+      "expected_cypher": "MATCH (svc:Microservice {name: 'order-service'})-[:DEPENDS_ON*1..5]->(lib:Library)-[:HAS_VULNERABILITY]->(cve:CVE) RETURN lib.name AS library, cve.id AS cve_id, cve.cvss AS cvss",
+      "expected_result_count": 0,
+      "expected_values": []
+    }
+  ]
+}
