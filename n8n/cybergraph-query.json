@@ -1,0 +1,193 @@
+{
+  "id": "33333333-3333-4333-8333-333333333333",
+  "name": "CyberGraph-Query-Pipeline",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cybergraph",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "q-webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ],
+      "webhookId": "cybergraph-query-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst query = String(body.query || body.message || '').trim();\nif (!query) {\n  return [{ json: { ok: false, error: 'Missing query', status: 400 } }];\n}\nconst q = query.toLowerCase();\nlet cypher = '';\nlet queryType = 'generic';\nlet target = null;\nif (q.includes('log4shell') || q.includes('cve-2021-44228')) {\n  queryType = 'impact';\n  target = 'CVE-2021-44228';\n  cypher = `MATCH path = (cve:CVE {id: 'CVE-2021-44228'})<-[:HAS_VULNERABILITY]-(lib:Library)<-[:DEPENDS_ON*1..5]-(svc:Microservice) RETURN svc.name AS service, svc.pci_scope AS pci_scope, svc.exposed AS exposed, length(path) AS dependency_depth, [node IN nodes(path) | node.name] AS chain, cve.cvss AS cvss_score, cve.name AS cve_name ORDER BY dependency_depth`;\n} else if (q.includes('spring4shell') || q.includes('cve-2022-22965')) {\n  queryType = 'impact';\n  target = 'CVE-2022-22965';\n  cypher = `MATCH path = (cve:CVE {id: 'CVE-2022-22965'})<-[:HAS_VULNERABILITY]-(lib:Library)<-[:DEPENDS_ON*1..5]-(svc:Microservice) RETURN svc.name AS service, svc.pci_scope AS pci_scope, svc.exposed AS exposed, length(path) AS dependency_depth, [node IN nodes(path) | node.name] AS chain, cve.cvss AS cvss_score, cve.name AS cve_name ORDER BY dependency_depth`;\n} else if ((q.includes('server') || q.includes('host')) && q.includes('payment')) {\n  queryType = 'hosting';\n  target = 'payment-service';\n  cypher = `MATCH (svc:Microservice)-[:HOSTED_ON]->(srv:Server) WHERE toLower(svc.name) CONTAINS 'payment' RETURN svc.name AS service, srv.name AS server, srv.ip AS server_ip ORDER BY svc.name`;\n} else if (q.includes('dependency chain') && q.includes('user-portal')) {\n  queryType = 'dependency_chain';\n  target = 'user-portal';\n  cypher = `MATCH path = (:Microservice {name: 'user-portal'})-[:DEPENDS_ON*1..5]->(n) RETURN [node IN nodes(path) | coalesce(node.name, node.id)] AS chain, length(path) AS hops ORDER BY hops DESC`;\n} else if (q.includes('list all servers')) {\n  queryType = 'list_servers';\n  cypher = `MATCH (s:Server) RETURN s.name AS server, s.ip AS ip, s.os AS os, s.tier AS tier ORDER BY s.name`;\n} else {\n  queryType = 'fallback';\n  cypher = `MATCH (s:Server)<-[:HOSTED_ON]-(svc:Microservice) RETURN svc.name AS service, s.name AS server ORDER BY server, service`;\n}\nreturn [{ json: { ok: true, original_query: query, query_type: queryType, target, cypher } }];"
+      },
+      "id": "q-prepare",
+      "name": "Prepare Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.ok }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "q-valid",
+      "name": "Has Query?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://neo4j:cybergraph123@neo4j:7474/db/neo4j/tx/commit",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ statements: [{ statement: $json.cypher, resultDataContents: ['row'] }] }) }}",
+        "options": {}
+      },
+      "id": "q-neo4j",
+      "name": "Execute Neo4j Query",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        950,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Prepare Query').first().json;\nconst resp = $input.first().json;\nconst errors = resp.errors || [];\nif (errors.length > 0) {\n  return [{ json: { success: false, error: errors[0].message, original_query: original.original_query, cypher: original.cypher } }];\n}\nconst result = (resp.results || [])[0] || { columns: [], data: [] };\nconst rows = (result.data || []).map(r => {\n  const obj = {};\n  result.columns.forEach((c, i) => obj[c] = r.row[i]);\n  return obj;\n});\nconst out = { success: true, original_query: original.original_query, query_type: original.query_type, target: original.target, cypher: original.cypher, row_count: rows.length, rows };\nif (original.query_type === 'impact') {\n  const affected = rows.map(r => r.service).filter(Boolean);\n  const maxCvss = rows.reduce((m, r) => Math.max(m, Number(r.cvss_score || 0)), 0);\n  const hasPci = rows.some(r => !!r.pci_scope);\n  const hasExposed = rows.some(r => !!r.exposed);\n  let risk = 'INFO';\n  if (maxCvss >= 9 && (hasPci || hasExposed)) risk = 'CRITICAL';\n  else if (maxCvss >= 7 || affected.length >= 3) risk = 'HIGH';\n  else if (maxCvss >= 4) risk = 'MEDIUM';\n  else if (affected.length > 0) risk = 'LOW';\n  const recommended = affected.includes('payment-service') ? 'isolate payment-service' : (affected[0] ? `review ${affected[0]}` : 'no action');\n  out.risk_level = risk;\n  out.affected_services = affected;\n  out.awaiting_confirmation = risk === 'CRITICAL' && affected.includes('payment-service');\n  out.recommendation = recommended;\n  out.message = affected.length\n    ? `${risk}: ${affected.length} affected service(s): ${affected.join(', ')}. Recommended action: ${recommended}.` + (out.awaiting_confirmation ? ' Type confirm isolate payment-service to execute remediation.' : '')\n    : `INFO: no affected services found for ${original.target}.`;\n} else if (original.query_type === 'hosting') {\n  out.risk_level = 'INFO';\n  out.awaiting_confirmation = false;\n  out.message = rows.length ? `Found ${rows.length} payment-related service hosting record(s).` : 'No payment-related hosting records found.';\n} else if (original.query_type === 'dependency_chain') {\n  out.risk_level = 'INFO';\n  out.awaiting_confirmation = false;\n  out.message = rows.length ? `Found ${rows.length} dependency chain(s) for ${original.target}.` : `No dependency chain found for ${original.target}.`;\n} else if (original.query_type === 'list_servers') {\n  out.risk_level = 'INFO';\n  out.awaiting_confirmation = false;\n  out.message = `Listed ${rows.length} server(s).`;\n} else {\n  out.risk_level = 'INFO';\n  out.awaiting_confirmation = false;\n  out.message = `Returned ${rows.length} row(s).`;\n}\nreturn [{ json: out }];"
+      },
+      "id": "q-format",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "q-respond",
+      "name": "Respond Query",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1450,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: $json.error || 'Missing query' }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "q-error",
+      "name": "Respond Query Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        950,
+        430
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Query": {
+      "main": [
+        [
+          {
+            "node": "Has Query?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Query?": {
+      "main": [
+        [
+          {
+            "node": "Execute Neo4j Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Query Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Neo4j Query": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "pinData": {},
+  "meta": null,
+  "versionId": "c4103a91-f132-4a7a-8def-7f47f257e857"
+}

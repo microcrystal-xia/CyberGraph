@@ -1,0 +1,115 @@
+{
+  "id": "77777777-7777-4777-8777-777777777777",
+  "name": "CyberGraph-Reset-Graph",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cybergraph/reset",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "reset-webhook",
+      "name": "Reset Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 260],
+      "webhookId": "cybergraph-reset-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst confirm = String(body.confirm || '').trim().toLowerCase();\nconst operator = String(body.operator || 'unknown').trim();\nif (confirm !== 'RESET') {\n  return [{ json: { ok: false, error: \"Missing confirmation. Send {\\\"confirm\\\":\\\"RESET\\\"}.\", operator } }];\n}\nreturn [{ json: { ok: true, operator } }];"
+      },
+      "id": "reset-validate",
+      "name": "Validate Reset",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 260]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.ok }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "reset-valid",
+      "name": "Confirmed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 260]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://neo4j:cybergraph123@neo4j:7474/db/neo4j/tx/commit",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ statements: [ { statement: \"MATCH (n) DETACH DELETE n\" }, { statement: \"CREATE (s1:Server {name: 'web-server-01', ip: '10.0.1.1', os: 'Ubuntu 22.04', tier: 'frontend'}) CREATE (s2:Server {name: 'app-server-01', ip: '10.0.2.1', os: 'CentOS 7', tier: 'backend'}) CREATE (s3:Server {name: 'db-server-01', ip: '10.0.3.1', os: 'Ubuntu 20.04', tier: 'data'}) CREATE (ms1:Microservice {name: 'user-portal', exposed: true, lang: 'Node.js', version: '3.2.0'}) CREATE (ms2:Microservice {name: 'auth-service', exposed: false, lang: 'Java', version: '2.1.0'}) CREATE (ms3:Microservice {name: 'payment-service', exposed: false, lang: 'Java', version: '1.8.0', pci_scope: true}) CREATE (ms4:Microservice {name: 'order-service', exposed: false, lang: 'Python', version: '4.0.1'}) CREATE (ms5:Microservice {name: 'notification-service', exposed: false, lang: 'Java', version: '1.2.0'}) CREATE (lib1:Library {name: 'log4j-core', version: '2.14.1', language: 'Java'}) CREATE (lib2:Library {name: 'spring-boot', version: '2.5.0', language: 'Java'}) CREATE (lib3:Library {name: 'express', version: '4.18.0', language: 'Node.js'}) CREATE (lib4:Library {name: 'requests', version: '2.26.0', language: 'Python'}) CREATE (cve1:CVE {id: 'CVE-2021-44228', name: 'Log4Shell', cvss: 10.0, description: 'Remote code execution via JNDI injection in log4j', published: '2021-12-10'}) CREATE (cve2:CVE {id: 'CVE-2022-22965', name: 'Spring4Shell', cvss: 9.8, description: 'RCE in Spring MVC via data binding', published: '2022-03-31'}) CREATE (ms1)-[:HOSTED_ON]->(s1) CREATE (ms2)-[:HOSTED_ON]->(s2) CREATE (ms3)-[:HOSTED_ON]->(s2) CREATE (ms4)-[:HOSTED_ON]->(s2) CREATE (ms5)-[:HOSTED_ON]->(s2) CREATE (ms1)-[:DEPENDS_ON]->(ms2) CREATE (ms1)-[:DEPENDS_ON]->(ms4) CREATE (ms2)-[:DEPENDS_ON]->(lib2) CREATE (ms3)-[:DEPENDS_ON]->(lib1) CREATE (ms3)-[:DEPENDS_ON]->(lib2) CREATE (ms4)-[:DEPENDS_ON]->(lib4) CREATE (ms5)-[:DEPENDS_ON]->(lib1) CREATE (ms2)-[:DEPENDS_ON]->(ms3) CREATE (ms1)-[:DEPENDS_ON]->(lib3) CREATE (lib1)-[:HAS_VULNERABILITY]->(cve1) CREATE (lib2)-[:HAS_VULNERABILITY]->(cve2)\" }, { statement: \"MATCH (n) RETURN count(n) AS node_count\", resultDataContents: ['row'] } ] }) }}",
+        "options": {}
+      },
+      "id": "reset-neo4j",
+      "name": "Reset Graph In Neo4j",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [950, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst errors = resp.errors || [];\nif (errors.length) {\n  return [{ json: { success: false, error: errors[0].message } }];\n}\nconst results = resp.results || [];\nlet nodeCount = null;\nif (results[2] && results[2].data && results[2].data[0]) nodeCount = results[2].data[0].row[0];\nreturn [{ json: { success: true, node_count: nodeCount, operator: $('Validate Reset').first().json.operator, message: `Graph reset complete. Demo topology restored${nodeCount !== null ? ` (${nodeCount} nodes)` : ''}.` } }];"
+      },
+      "id": "reset-format",
+      "name": "Format Reset Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "reset-respond",
+      "name": "Respond Reset",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: $json.error || 'Reset confirmation missing' }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "reset-error",
+      "name": "Respond Reset Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [950, 390]
+    }
+  ],
+  "connections": {
+    "Reset Webhook": { "main": [[{ "node": "Validate Reset", "type": "main", "index": 0 }]] },
+    "Validate Reset": { "main": [[{ "node": "Confirmed?", "type": "main", "index": 0 }]] },
+    "Confirmed?": {
+      "main": [
+        [{ "node": "Reset Graph In Neo4j", "type": "main", "index": 0 }],
+        [{ "node": "Respond Reset Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Reset Graph In Neo4j": { "main": [[{ "node": "Format Reset Response", "type": "main", "index": 0 }]] },
+    "Format Reset Response": { "main": [[{ "node": "Respond Reset", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "pinData": {},
+  "meta": null,
+  "versionId": "88888888-8888-4888-8888-888888888888"
+}

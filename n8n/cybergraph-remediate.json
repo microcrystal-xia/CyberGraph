@@ -1,0 +1,305 @@
+{
+  "id": "55555555-5555-4555-8555-555555555555",
+  "name": "CyberGraph-Remediation",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cybergraph/remediate",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "r-webhook",
+      "name": "Remediation Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ],
+      "webhookId": "cybergraph-remediate-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst action = String(body.action || '').trim().toLowerCase();\nconst target = String(body.target || '').trim();\nconst operator = String(body.operator || 'unknown').trim();\nconst validActions = ['isolate', 'quarantine', 'restore'];\nif (!action || !target) {\n  return [{ json: { valid: false, error: 'Missing action or target parameter' } }];\n}\nif (!validActions.includes(action)) {\n  return [{ json: { valid: false, error: `Invalid action: ${action}` } }];\n}\nreturn [{ json: { valid: true, action, target, operator, timestamp: new Date().toISOString() } }];"
+      },
+      "id": "r-validate",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valid }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "r-valid",
+      "name": "Is Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://neo4j:cybergraph123@neo4j:7474/db/neo4j/tx/commit",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ statements: [{ statement: `MATCH (s:Microservice {name: '${$json.target}'}) OPTIONAL MATCH (s)-[:HOSTED_ON]->(srv:Server) OPTIONAL MATCH (upstream:Microservice)-[:DEPENDS_ON*1..5]->(s) RETURN s.name AS service, s.status AS current_status, srv.name AS server, srv.ip AS server_ip, collect(DISTINCT upstream.name) AS upstream_services`, resultDataContents: ['row'] }] }) }}",
+        "options": {}
+      },
+      "id": "r-details",
+      "name": "Get Target Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        950,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $('Validate Input').first().json;\nconst resp = $input.first().json;\nconst result = (resp.results || [])[0] || { columns: [], data: [] };\nif (!result.data || result.data.length === 0) {\n  return [{ json: { found: false, error: `Service '${context.target}' not found` } }];\n}\nconst row = result.data[0].row;\nreturn [{ json: { found: true, action: context.action, operator: context.operator, timestamp: context.timestamp, service: row[0], current_status: row[1], server: row[2], server_ip: row[3], upstream_services: row[4] || [] } }];"
+      },
+      "id": "r-parse",
+      "name": "Parse Target Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.found }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "r-found",
+      "name": "Target Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1450,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst rule = d.action === 'restore' ? 'ALLOW' : 'DENY';\nreturn [{ json: { ...d, firewall: { rule, target_ip: d.server_ip, port: 8080, status: 'executed' } } }];"
+      },
+      "id": "r-firewall",
+      "name": "Simulate Firewall Action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://neo4j:cybergraph123@neo4j:7474/db/neo4j/tx/commit",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ statements: [{ statement: `MATCH (s:Microservice {name: '${$json.service}'}) SET s.status = '${$json.action === 'restore' ? 'active' : 'quarantined'}', s.quarantined_at = datetime(), s.quarantined_by = '${$json.operator}' RETURN s.name AS service, s.status AS status`, resultDataContents: ['row'] }] }) }}",
+        "options": {}
+      },
+      "id": "r-update",
+      "name": "Update Graph Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1950,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Simulate Firewall Action').first().json;\nconst status = d.action === 'restore' ? 'active' : 'quarantined';\nconst warning = d.upstream_services && d.upstream_services.filter(Boolean).length ? ` Upstream services: ${d.upstream_services.filter(Boolean).join(', ')}.` : '';\nreturn [{ json: { success: true, action: d.action, service: d.service, new_status: status, server: d.server, firewall: d.firewall, operator: d.operator, timestamp: d.timestamp, message: `Remediation executed: ${d.action} ${d.service}. Firewall rule ${d.firewall.rule} ${d.firewall.target_ip}:${d.firewall.port}. Graph status -> ${status}.${warning}` } }];"
+      },
+      "id": "r-format",
+      "name": "Format Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "r-respond-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2450,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: $json.error || 'Invalid remediation request' }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "r-respond-error",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1700,
+        420
+      ]
+    }
+  ],
+  "connections": {
+    "Remediation Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Is Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid?": {
+      "main": [
+        [
+          {
+            "node": "Get Target Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Target Details": {
+      "main": [
+        [
+          {
+            "node": "Parse Target Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Target Details": {
+      "main": [
+        [
+          {
+            "node": "Target Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Target Found?": {
+      "main": [
+        [
+          {
+            "node": "Simulate Firewall Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simulate Firewall Action": {
+      "main": [
+        [
+          {
+            "node": "Update Graph Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Graph Status": {
+      "main": [
+        [
+          {
+            "node": "Format Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "pinData": {},
+  "meta": null,
+  "versionId": "072fc39e-a884-46a8-99ec-25418ebfb283"
+}
