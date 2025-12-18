@@ -1,0 +1,57 @@
+tools:
+  - name: query_infrastructure
+    description: >
+      Query the IT infrastructure graph using natural language.
+      Ask about vulnerabilities, dependencies, services, servers, and impact analysis.
+      Examples: "What services are affected by Log4Shell?", "Show me the payment service dependency chain"
+    endpoint:
+      url: http://n8n:5678/webhook/cybergraph
+      method: POST
+      headers:
+        Content-Type: application/json
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Natural language security question about the infrastructure
+      required: [query]
+    output_mapping:
+      response: $.message
+      risk_level: $.risk_level
+      awaiting_confirmation: $.awaiting_confirmation
+
+  - name: execute_remediation
+    description: >
+      Execute a confirmed remediation action on the infrastructure.
+      Supports isolation, quarantine, and restore operations.
+      Requires operator confirmation before execution.
+    endpoint:
+      url: http://n8n:5678/webhook/cybergraph/remediate
+      method: POST
+      headers:
+        Content-Type: application/json
+    input_schema:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [isolate, quarantine, restore]
+          description: The remediation action to perform
+        target:
+          type: string
+          description: Service or server name to act upon
+        operator:
+          type: string
+          description: Operator username from chat context
+      required: [action, target, operator]
+    confirmation_required: true
+    confirmation_pattern: "confirm (isolate|quarantine|restore) (.+)"
+
+bots:
+  telegram:
+    token: ${TELEGRAM_BOT_TOKEN}
+    allowed_chat_ids: ${TELEGRAM_ALLOWED_CHATS}
+  slack:
+    token: ${SLACK_BOT_TOKEN}
+    signing_secret: ${SLACK_SIGNING_SECRET}
