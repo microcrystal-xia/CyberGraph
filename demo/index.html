@@ -1,0 +1,1188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CyberGraph Demo — ICWE 2026</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-base:    #0a0e1a;
+    --bg-panel:   #0f1629;
+    --bg-card:    #141e36;
+    --bg-input:   #1a2540;
+    --border:     #1e2d4a;
+    --border-hi:  #2a3f6a;
+    --accent:     #3d8ef0;
+    --accent-dim: #1e4a8a;
+    --green:      #22c55e;
+    --green-dim:  #15803d;
+    --yellow:     #eab308;
+    --yellow-dim: #854d0e;
+    --red:        #ef4444;
+    --red-dim:    #991b1b;
+    --blue:       #60a5fa;
+    --blue-dim:   #1e3a8a;
+    --text-pri:   #e2e8f0;
+    --text-sec:   #94a3b8;
+    --text-dim:   #475569;
+    --font-mono:  'Courier New', Courier, monospace;
+    --font-sans:  -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg-base);
+    color: var(--text-pri);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    overflow: hidden;
+  }
+
+  /* ─── Layout ─────────────────────────────────────────── */
+  .shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    gap: 0;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    z-index: 10;
+  }
+
+  .header-left { display: flex; align-items: center; gap: 14px; }
+
+  .logo-mark {
+    width: 34px; height: 34px;
+    background: linear-gradient(135deg, #3d8ef0 0%, #7c3aed 100%);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 800; color: #fff;
+    letter-spacing: -1px;
+    box-shadow: 0 0 14px rgba(61,142,240,0.4);
+    flex-shrink: 0;
+  }
+
+  .header-titles h1 {
+    font-size: 16px; font-weight: 700; color: var(--text-pri);
+    letter-spacing: 0.3px;
+  }
+  .header-titles p {
+    font-size: 11px; color: var(--text-sec); margin-top: 1px;
+  }
+
+  .badge-row { display: flex; gap: 6px; align-items: center; }
+  .badge {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    border: 1px solid;
+    text-transform: uppercase;
+  }
+  .badge-neo4j  { color: #22d3ee; border-color: #164e63; background: #0c2d3a; }
+  .badge-llm    { color: #a78bfa; border-color: #4c1d95; background: #1e0a40; }
+  .badge-n8n    { color: #fb923c; border-color: #7c2d12; background: #2a1206; }
+  .badge-icwe   { color: var(--text-sec); border-color: var(--border-hi); background: var(--bg-card); }
+
+  .header-right { display: flex; align-items: center; gap: 10px; }
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    animation: pulse-dot 2s infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100% { opacity: 1; }
+    50%      { opacity: 0.4; }
+  }
+  .status-label { font-size: 11px; color: var(--text-sec); }
+
+  /* ─── Main ────────────────────────────────────────────── */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    gap: 0;
+  }
+
+  /* ─── Left Panel ─────────────────────────────────────── */
+  .panel-graph {
+    width: 55%;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    background: var(--bg-base);
+    position: relative;
+  }
+
+  .panel-header {
+    padding: 9px 16px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-sec);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+
+  .legend {
+    display: flex; gap: 12px; align-items: center;
+  }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-dot  { width: 8px; height: 8px; border-radius: 50%; }
+  .legend-label { font-size: 10px; color: var(--text-dim); }
+
+  #graph-svg {
+    flex: 1;
+    width: 100%;
+    cursor: grab;
+  }
+  #graph-svg:active { cursor: grabbing; }
+
+  /* Node styles inside SVG are set via JS/inline attrs, but we add class-based glow */
+  .node-group { cursor: pointer; }
+  .node-circle {
+    transition: filter 0.3s, r 0.2s;
+  }
+  .node-circle:hover {
+    filter: brightness(1.3);
+  }
+  .node-glow-red {
+    animation: glow-red 1.2s ease-in-out infinite alternate;
+  }
+  @keyframes glow-red {
+    from { filter: drop-shadow(0 0 4px #ef4444) drop-shadow(0 0 8px #ef4444); }
+    to   { filter: drop-shadow(0 0 12px #ef4444) drop-shadow(0 0 24px #ef444488); }
+  }
+  .node-glow-yellow {
+    animation: glow-yellow 1.4s ease-in-out infinite alternate;
+  }
+  @keyframes glow-yellow {
+    from { filter: drop-shadow(0 0 4px #eab308) drop-shadow(0 0 8px #eab308); }
+    to   { filter: drop-shadow(0 0 10px #eab308) drop-shadow(0 0 20px #eab30888); }
+  }
+
+  .edge-line { stroke-opacity: 0.55; }
+  .edge-label { font-size: 8px; fill: #475569; font-family: var(--font-mono); }
+  .node-label { font-family: var(--font-sans); pointer-events: none; dominant-baseline: central; }
+
+  /* Tooltip */
+  #tooltip {
+    position: absolute;
+    background: var(--bg-card);
+    border: 1px solid var(--border-hi);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 11px;
+    color: var(--text-pri);
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.15s;
+    min-width: 140px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  }
+  #tooltip.visible { opacity: 1; }
+  #tooltip .tt-name { font-weight: 700; font-size: 12px; margin-bottom: 4px; }
+  #tooltip .tt-row  { color: var(--text-sec); }
+  #tooltip .tt-row span { color: var(--text-pri); }
+
+  /* ─── Right Panel (Chat) ─────────────────────────────── */
+  .panel-chat {
+    width: 45%;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-panel);
+  }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    scroll-behavior: smooth;
+  }
+  .chat-messages::-webkit-scrollbar { width: 4px; }
+  .chat-messages::-webkit-scrollbar-track { background: transparent; }
+  .chat-messages::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 2px; }
+
+  .msg { display: flex; flex-direction: column; gap: 4px; max-width: 100%; opacity: 0; }
+  .msg.visible { opacity: 1; }
+  .msg.animate-in { animation: msg-in 0.35s ease forwards; }
+  @keyframes msg-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg-header {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .msg-avatar {
+    width: 22px; height: 22px; border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; flex-shrink: 0;
+  }
+  .avatar-op { background: var(--accent-dim); color: var(--accent); }
+  .avatar-cg { background: linear-gradient(135deg, #1e4a8a 0%, #4c1d95 100%); color: #a78bfa; }
+
+  .msg-sender { font-size: 11px; font-weight: 600; color: var(--text-sec); }
+  .msg-time   { font-size: 10px; color: var(--text-dim); margin-left: auto; }
+
+  .msg-bubble {
+    border-radius: 8px;
+    padding: 10px 13px;
+    line-height: 1.55;
+    font-size: 13px;
+    position: relative;
+  }
+  .bubble-op {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    color: var(--text-pri);
+    align-self: flex-start;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .bubble-cg {
+    background: var(--bg-card);
+    border: 1px solid var(--border-hi);
+    color: var(--text-pri);
+    align-self: flex-start;
+  }
+  .bubble-cg.critical-alert {
+    border-color: #7f1d1d;
+    background: linear-gradient(135deg, #1c0a0a 0%, #14101e 100%);
+    box-shadow: 0 0 0 1px #991b1b44, inset 0 0 30px rgba(239,68,68,0.04);
+  }
+  .bubble-cg.success-alert {
+    border-color: #14532d;
+    background: linear-gradient(135deg, #071a10 0%, #0e1420 100%);
+    box-shadow: 0 0 0 1px #15803d44, inset 0 0 30px rgba(34,197,94,0.04);
+  }
+
+  .crit-header {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #7f1d1d55;
+  }
+  .crit-badge {
+    background: var(--red-dim);
+    color: var(--red);
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    border: 1px solid #ef444444;
+  }
+  .crit-title { font-weight: 700; color: var(--red); font-size: 13px; }
+  .cvss-badge {
+    margin-left: auto;
+    background: #450a0a;
+    color: #fca5a5;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    border: 1px solid #ef444433;
+  }
+
+  .affected-list { margin: 8px 0 10px; }
+  .affected-item {
+    display: flex; align-items: flex-start; gap: 6px;
+    padding: 5px 8px; border-radius: 5px;
+    margin-bottom: 3px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid transparent;
+    transition: border-color 0.3s, background 0.3s;
+  }
+  .affected-item.highlight {
+    border-color: #ef444455;
+    background: rgba(239,68,68,0.06);
+  }
+  .affected-bullet { color: var(--red); font-size: 12px; flex-shrink: 0; margin-top: 1px; }
+  .affected-name { font-weight: 600; color: var(--text-pri); font-size: 12px; font-family: var(--font-mono); }
+  .affected-scope { color: var(--red); font-size: 10px; font-weight: 600; margin-left: 4px; }
+  .affected-path { color: var(--text-sec); font-size: 11px; margin-top: 1px; }
+
+  .rec-box {
+    background: rgba(234,179,8,0.05);
+    border: 1px solid #854d0e66;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: #fde68a;
+  }
+  .rec-box strong { color: var(--yellow); display: block; margin-bottom: 3px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+  .success-header {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #14532d55;
+  }
+  .success-title { font-weight: 700; color: var(--green); font-size: 13px; }
+  .action-list { display: flex; flex-direction: column; gap: 4px; }
+  .action-item {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 12px;
+    color: var(--text-sec);
+    padding: 3px 0;
+  }
+  .action-icon { color: var(--green); font-size: 11px; flex-shrink: 0; }
+  .action-code { font-family: var(--font-mono); color: #86efac; font-size: 11px; }
+
+  .typing-indicator {
+    display: flex; align-items: center; gap: 5px;
+    padding: 10px 13px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-hi);
+    border-radius: 8px;
+    width: fit-content;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .typing-indicator.show { opacity: 1; }
+  .typing-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent);
+    animation: typing-bounce 1.2s ease-in-out infinite;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typing-bounce {
+    0%,60%,100% { transform: translateY(0); opacity: 0.4; }
+    30%          { transform: translateY(-5px); opacity: 1; }
+  }
+  .typing-label { font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); }
+
+  /* Querying status */
+  .query-status {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: var(--text-sec);
+    font-family: var(--font-mono);
+    padding: 6px 0;
+  }
+  .query-spinner {
+    width: 12px; height: 12px;
+    border: 2px solid var(--border-hi);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Chat input */
+  .chat-input-area {
+    padding: 10px 14px 12px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-panel);
+    flex-shrink: 0;
+  }
+  .chat-input-row {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-hi);
+    border-radius: 8px;
+    padding: 8px 12px;
+    transition: border-color 0.2s;
+  }
+  .chat-input-row:focus-within { border-color: var(--accent); }
+  .input-prompt { color: var(--accent); font-family: var(--font-mono); font-size: 13px; flex-shrink: 0; }
+  .chat-input {
+    flex: 1; background: none; border: none; outline: none;
+    color: var(--text-pri); font-family: var(--font-mono); font-size: 12px;
+    caret-color: var(--accent);
+  }
+  .chat-input::placeholder { color: var(--text-dim); }
+  .send-btn {
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+    font-family: var(--font-sans);
+  }
+  .send-btn:hover { background: var(--accent); color: #fff; }
+
+  /* ─── Stats Bar ─────────────────────────────────────── */
+  .stats-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 20px;
+    background: var(--bg-panel);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    gap: 16px;
+    flex-wrap: nowrap;
+  }
+  .stat-group { display: flex; align-items: center; gap: 14px; }
+  .stat-item  { display: flex; align-items: center; gap: 5px; }
+  .stat-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-value { font-size: 11px; font-weight: 700; font-family: var(--font-mono); }
+  .sv-neutral { color: var(--text-sec); }
+  .sv-green   { color: var(--green); }
+  .sv-yellow  { color: var(--yellow); }
+  .sv-accent  { color: var(--accent); }
+  .stat-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+
+  .eval-label {
+    font-size: 10px; color: var(--text-dim); text-transform: uppercase;
+    letter-spacing: 0.5px; font-weight: 600;
+  }
+
+  /* ─── Misc ─────────────────────────────────────────── */
+  .scan-line {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(61,142,240,0.6), transparent);
+    animation: scan 4s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes scan {
+    0%   { top: 0; opacity: 1; }
+    95%  { opacity: 0.3; }
+    100% { top: 100%; opacity: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ── Header ─────────────────────────────────────── -->
+  <header>
+    <div class="header-left">
+      <div class="logo-mark">CG</div>
+      <div class="header-titles">
+        <h1>CyberGraph Demo</h1>
+        <p>Conversational Threat Response for Web Infrastructure</p>
+      </div>
+    </div>
+    <div class="badge-row">
+      <span class="badge badge-neo4j">Neo4j</span>
+      <span class="badge badge-llm">GPT-5.2</span>
+      <span class="badge badge-n8n">n8n</span>
+      <span class="badge badge-icwe">ICWE 2026</span>
+    </div>
+    <div class="header-right">
+      <div class="status-dot"></div>
+      <span class="status-label">System online</span>
+    </div>
+  </header>
+
+  <!-- ── Main ───────────────────────────────────────── -->
+  <div class="main">
+
+    <!-- Left: Graph -->
+    <div class="panel-graph">
+      <div class="scan-line"></div>
+      <div class="panel-header">
+        <span class="panel-title">Infrastructure Graph</span>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div><span class="legend-label">Server</span></div>
+          <div class="legend-item"><div class="legend-dot" style="background:#60a5fa"></div><span class="legend-label">Microservice</span></div>
+          <div class="legend-item"><div class="legend-dot" style="background:#eab308"></div><span class="legend-label">Library</span></div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div><span class="legend-label">CVE</span></div>
+        </div>
+      </div>
+      <svg id="graph-svg" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#3b82f688"/>
+          </marker>
+          <marker id="arrow-gray" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#47556988"/>
+          </marker>
+          <marker id="arrow-red" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#ef444488"/>
+          </marker>
+          <filter id="glow-red-filter" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+            <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <!-- edges and nodes rendered by JS -->
+        <g id="edges-layer"></g>
+        <g id="nodes-layer"></g>
+      </svg>
+      <div id="tooltip">
+        <div class="tt-name" id="tt-name"></div>
+        <div class="tt-row" id="tt-type"></div>
+        <div class="tt-row" id="tt-extra"></div>
+      </div>
+    </div>
+
+    <!-- Right: Chat -->
+    <div class="panel-chat">
+      <div class="panel-header">
+        <span class="panel-title">Threat Intelligence Console</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="status-dot" style="width:6px;height:6px;"></div>
+          <span class="status-label" style="font-size:10px;">Connected · Session #4821</span>
+        </div>
+      </div>
+
+      <div class="chat-messages" id="chat-messages">
+        <!-- messages injected by JS -->
+      </div>
+
+      <div class="chat-input-area">
+        <div class="chat-input-row">
+          <span class="input-prompt">$</span>
+          <input class="chat-input" type="text" placeholder="Type a threat query or remediation command…" autocomplete="off" spellcheck="false">
+          <button class="send-btn">Send</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Stats Bar ────────────────────────────────────── -->
+  <div class="stats-bar">
+    <span class="eval-label">Evaluation Results</span>
+    <div class="stat-group">
+      <div class="stat-item">
+        <span class="stat-label">Queries</span>
+        <span class="stat-value sv-neutral">23</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-label">Syntax Valid</span>
+        <span class="stat-value sv-green">100%</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-label">Exec Success</span>
+        <span class="stat-value sv-green">100%</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-label">Result Correct</span>
+        <span class="stat-value sv-yellow">74%</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-label">Avg Latency</span>
+        <span class="stat-value sv-accent">3.5s</span>
+      </div>
+    </div>
+    <span style="font-size:10px;color:var(--text-dim);">CyberGraph · ICWE 2026 Demo Paper</span>
+  </div>
+
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  GRAPH DATA
+// ═══════════════════════════════════════════════════════
+const NODES = [
+  // Servers
+  { id:'web-server-01', label:'web-server-01', type:'server',       info:'IP: 10.0.1.1 | OS: Ubuntu 22.04 | Tier: frontend', x:0, y:0 },
+  { id:'app-server-01', label:'app-server-01', type:'server',       info:'IP: 10.0.2.1 | OS: CentOS 7 | Tier: backend',     x:0, y:0 },
+  { id:'db-server-01',  label:'db-server-01',  type:'server',       info:'IP: 10.0.3.1 | OS: Ubuntu 20.04 | Tier: data',     x:0, y:0 },
+  // Microservices
+  { id:'user-portal',        label:'user-portal',        type:'service', info:'Exposed: true | Lang: Node.js | v3.2.0', x:0, y:0 },
+  { id:'auth-service',       label:'auth-service',       type:'service', info:'Exposed: false | Lang: Java | v2.1.0', x:0, y:0 },
+  { id:'payment-service',    label:'payment-service',    type:'service', info:'Exposed: false | Lang: Java | v1.8.0 | PCI-scoped', x:0, y:0 },
+  { id:'order-service',      label:'order-service',      type:'service', info:'Exposed: false | Lang: Python | v4.0.1', x:0, y:0 },
+  { id:'notification-service', label:'notification-svc', type:'service', info:'Exposed: false | Lang: Java | v1.2.0', x:0, y:0 },
+  // Libraries
+  { id:'spring-boot',        label:'spring-boot',        type:'library', info:'v2.5.0 | Language: Java', x:0, y:0 },
+  { id:'log4j-core',         label:'log4j-core',         type:'library', info:'v2.14.1 | Language: Java | VULNERABLE', x:0, y:0 },
+  { id:'express',   label:'express',   type:'library', info:'v4.18.0 | Language: Node.js', x:0, y:0 },
+  { id:'requests',       label:'requests',       type:'library', info:'v2.26.0 | Language: Python', x:0, y:0 },
+  // CVEs
+  { id:'CVE-2021-44228', label:'CVE-2021-44228', type:'cve', info:'Log4Shell | CVSS: 10.0 | Critical', x:0, y:0 },
+  { id:'CVE-2022-22965', label:'CVE-2022-22965', type:'cve', info:'Spring4Shell | CVSS: 9.8 | Critical', x:0, y:0 },
+];
+
+const EDGES = [
+  // HOSTED_ON
+  { from:'user-portal',          to:'web-server-01',   rel:'HOSTED_ON' },
+  { from:'auth-service',         to:'app-server-01',   rel:'HOSTED_ON' },
+  { from:'payment-service',      to:'app-server-01',   rel:'HOSTED_ON' },
+  { from:'order-service',        to:'app-server-01',   rel:'HOSTED_ON' },
+  { from:'notification-service', to:'app-server-01',   rel:'HOSTED_ON' },
+  // DEPENDS_ON (service → service)
+  { from:'user-portal',          to:'auth-service',    rel:'DEPENDS_ON' },
+  { from:'user-portal',          to:'order-service',   rel:'DEPENDS_ON' },
+  { from:'auth-service',         to:'payment-service', rel:'DEPENDS_ON' },
+  // DEPENDS_ON (service → library)
+  { from:'user-portal',          to:'express',         rel:'DEPENDS_ON' },
+  { from:'auth-service',         to:'spring-boot',     rel:'DEPENDS_ON' },
+  { from:'payment-service',      to:'log4j-core',      rel:'DEPENDS_ON' },
+  { from:'payment-service',      to:'spring-boot',     rel:'DEPENDS_ON' },
+  { from:'order-service',        to:'requests',        rel:'DEPENDS_ON' },
+  { from:'notification-service', to:'log4j-core',      rel:'DEPENDS_ON' },
+  // HAS_VULNERABILITY
+  { from:'log4j-core',           to:'CVE-2021-44228',  rel:'HAS_VULNERABILITY' },
+  { from:'spring-boot',          to:'CVE-2022-22965',  rel:'HAS_VULNERABILITY' },
+];
+
+const TYPE_COLOR = {
+  server:  '#22c55e',
+  service: '#60a5fa',
+  library: '#eab308',
+  cve:     '#ef4444',
+};
+const TYPE_BG = {
+  server:  '#052e16',
+  service: '#1e3a8a',
+  library: '#422006',
+  cve:     '#450a0a',
+};
+const TYPE_RADIUS = { server: 20, service: 19, library: 17, cve: 21 };
+
+const REL_COLOR = {
+  HOSTED_ON:        '#3b82f888',
+  DEPENDS_ON:       '#94a3b855',
+  HAS_VULNERABILITY:'#ef444488',
+};
+const REL_ARROW = {
+  HOSTED_ON:        'url(#arrow-blue)',
+  DEPENDS_ON:       'url(#arrow-gray)',
+  HAS_VULNERABILITY:'url(#arrow-red)',
+};
+
+// ═══════════════════════════════════════════════════════
+//  MANUAL LAYOUT (force-directed feel, hand-tuned)
+// ═══════════════════════════════════════════════════════
+// We'll set initial positions and then apply a simple spring simulation
+const INIT_POS = {
+  'app-server-01':      { x: 0.50, y: 0.13 },
+  'web-server-01':      { x: 0.15, y: 0.13 },
+  'db-server-01':       { x: 0.82, y: 0.13 },
+  'user-portal':        { x: 0.12, y: 0.35 },
+  'auth-service':       { x: 0.38, y: 0.35 },
+  'payment-service':    { x: 0.55, y: 0.55 },
+  'order-service':      { x: 0.74, y: 0.38 },
+  'notification-service':{ x: 0.82, y: 0.55 },
+  'spring-boot':        { x: 0.28, y: 0.62 },
+  'log4j-core':         { x: 0.48, y: 0.79 },
+  'express':   { x: 0.66, y: 0.72 },
+  'requests':       { x: 0.82, y: 0.72 },
+  'CVE-2021-44228':     { x: 0.38, y: 0.92 },
+  'CVE-2022-22965':     { x: 0.18, y: 0.78 },
+};
+
+// ═══════════════════════════════════════════════════════
+//  RENDER GRAPH
+// ═══════════════════════════════════════════════════════
+const svg     = document.getElementById('graph-svg');
+const eLayer  = document.getElementById('edges-layer');
+const nLayer  = document.getElementById('nodes-layer');
+const tooltip = document.getElementById('tooltip');
+
+let svgW = 0, svgH = 0;
+const nodeMap = {};
+NODES.forEach(n => nodeMap[n.id] = n);
+
+// edge label abbreviations
+const REL_ABBR = {
+  HOSTED_ON:        'hosted_on',
+  DEPENDS_ON:       'depends_on',
+  HAS_VULNERABILITY:'has_vuln',
+};
+
+function initPositions() {
+  const rect = svg.getBoundingClientRect();
+  svgW = rect.width;
+  svgH = rect.height;
+  NODES.forEach(n => {
+    const p = INIT_POS[n.id];
+    n.x = p.x * svgW;
+    n.y = p.y * svgH;
+    n.vx = 0; n.vy = 0;
+  });
+}
+
+// ── Edge elements ──
+const edgeEls = {};
+EDGES.forEach((e, i) => {
+  const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+
+  const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+  line.setAttribute('stroke', REL_COLOR[e.rel]);
+  line.setAttribute('stroke-width', e.rel === 'HAS_VULNERABILITY' ? '1.8' : '1.2');
+  line.setAttribute('marker-end', REL_ARROW[e.rel]);
+  line.classList.add('edge-line');
+  if (e.rel === 'HAS_VULNERABILITY') {
+    line.setAttribute('stroke-dasharray','4,3');
+  }
+
+  const lbl = document.createElementNS('http://www.w3.org/2000/svg','text');
+  lbl.classList.add('edge-label');
+  lbl.textContent = REL_ABBR[e.rel];
+  lbl.setAttribute('text-anchor','middle');
+
+  g.appendChild(line);
+  g.appendChild(lbl);
+  eLayer.appendChild(g);
+  edgeEls[i] = { line, lbl };
+});
+
+// ── Node elements ──
+const nodeEls = {};
+NODES.forEach(n => {
+  const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+  g.classList.add('node-group');
+  g.setAttribute('data-id', n.id);
+
+  const r = TYPE_RADIUS[n.type];
+
+  // outer glow ring
+  const ring = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  ring.setAttribute('r', r + 5);
+  ring.setAttribute('fill', TYPE_COLOR[n.type] + '18');
+  ring.setAttribute('stroke', TYPE_COLOR[n.type] + '33');
+  ring.setAttribute('stroke-width','1');
+
+  // main circle
+  const circ = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  circ.setAttribute('r', r);
+  circ.setAttribute('fill', TYPE_BG[n.type]);
+  circ.setAttribute('stroke', TYPE_COLOR[n.type]);
+  circ.setAttribute('stroke-width', n.type === 'cve' ? '2' : '1.5');
+  circ.classList.add('node-circle');
+
+  // label
+  const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+  txt.classList.add('node-label');
+  txt.setAttribute('text-anchor','middle');
+  txt.setAttribute('y', r + 13);
+  txt.setAttribute('font-size', '9');
+  txt.setAttribute('fill', TYPE_COLOR[n.type]);
+  txt.textContent = n.label;
+
+  g.appendChild(ring);
+  g.appendChild(circ);
+  g.appendChild(txt);
+  nLayer.appendChild(g);
+  nodeEls[n.id] = { g, circ, ring };
+
+  // Tooltip
+  g.addEventListener('mouseenter', (ev) => {
+    document.getElementById('tt-name').textContent = n.id;
+    document.getElementById('tt-type').innerHTML = 'Type: <span>' + n.type.charAt(0).toUpperCase() + n.type.slice(1) + '</span>';
+    document.getElementById('tt-extra').innerHTML = n.info;
+    tooltip.classList.add('visible');
+    positionTooltip(ev);
+  });
+  g.addEventListener('mousemove', positionTooltip);
+  g.addEventListener('mouseleave', () => tooltip.classList.remove('visible'));
+
+  // Drag
+  let dragging = false, ox = 0, oy = 0;
+  g.addEventListener('mousedown', (ev) => {
+    dragging = true;
+    const pt = svgPoint(ev);
+    ox = pt.x - n.x; oy = pt.y - n.y;
+    n.vx = 0; n.vy = 0;
+    ev.preventDefault();
+    ev.stopPropagation();
+  });
+  window.addEventListener('mousemove', (ev) => {
+    if (!dragging) return;
+    const pt = svgPoint(ev);
+    n.x = pt.x - ox; n.y = pt.y - oy;
+    updatePositions();
+  });
+  window.addEventListener('mouseup', () => { dragging = false; });
+});
+
+function svgPoint(ev) {
+  const rect = svg.getBoundingClientRect();
+  return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+}
+
+function positionTooltip(ev) {
+  const rect = svg.getBoundingClientRect();
+  let x = ev.clientX - rect.left + 14;
+  let y = ev.clientY - rect.top - 10;
+  const tw = 180, th = 70;
+  if (x + tw > svgW) x -= tw + 28;
+  if (y + th > svgH) y = svgH - th - 10;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top  = y + 'px';
+}
+
+function updatePositions() {
+  NODES.forEach(n => {
+    const el = nodeEls[n.id];
+    el.g.setAttribute('transform', `translate(${n.x},${n.y})`);
+  });
+
+  EDGES.forEach((e, i) => {
+    const src = nodeMap[e.from];
+    const tgt = nodeMap[e.to];
+    const { line, lbl } = edgeEls[i];
+
+    // shorten line to node edge
+    const dx = tgt.x - src.x, dy = tgt.y - src.y;
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    const srcR = TYPE_RADIUS[src.type] + 5;
+    const tgtR = TYPE_RADIUS[tgt.type] + 8;
+    const x1 = src.x + dx/dist * srcR;
+    const y1 = src.y + dy/dist * srcR;
+    const x2 = tgt.x - dx/dist * tgtR;
+    const y2 = tgt.y - dy/dist * tgtR;
+
+    line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+    line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+
+    // label at midpoint, offset slightly
+    const mx = (x1+x2)/2, my = (y1+y2)/2;
+    const nx = -dy/dist * 10, ny = dx/dist * 10;
+    lbl.setAttribute('x', mx + nx); lbl.setAttribute('y', my + ny);
+  });
+}
+
+// ── Simple force simulation ──
+let simFrame = null;
+function runSim(steps) {
+  let step = 0;
+  function tick() {
+    if (step++ >= steps) return;
+
+    const REPEL = 1800, ATTRACT_EDGE = 0.012, DAMPING = 0.82;
+    const IDEAL = { HOSTED_ON: 140, DEPENDS_ON: 110, HAS_VULNERABILITY: 120 };
+    const CENTER_X = svgW * 0.5, CENTER_Y = svgH * 0.48;
+    const CENTER_FORCE = 0.0015;
+
+    // repulsion
+    for (let a = 0; a < NODES.length; a++) {
+      for (let b = a+1; b < NODES.length; b++) {
+        const na = NODES[a], nb = NODES[b];
+        const dx = nb.x - na.x, dy = nb.y - na.y;
+        const d2 = dx*dx + dy*dy + 1;
+        const f = REPEL / d2;
+        const fx = f * dx / Math.sqrt(d2), fy = f * dy / Math.sqrt(d2);
+        na.vx -= fx; na.vy -= fy;
+        nb.vx += fx; nb.vy += fy;
+      }
+    }
+    // attraction along edges
+    EDGES.forEach(e => {
+      const src = nodeMap[e.from], tgt = nodeMap[e.to];
+      const dx = tgt.x - src.x, dy = tgt.y - src.y;
+      const d = Math.sqrt(dx*dx + dy*dy) || 1;
+      const ideal = IDEAL[e.rel] || 110;
+      const f = (d - ideal) * ATTRACT_EDGE;
+      const fx = f * dx/d, fy = f * dy/d;
+      src.vx += fx; src.vy += fy;
+      tgt.vx -= fx; tgt.vy -= fy;
+    });
+    // center pull
+    NODES.forEach(n => {
+      n.vx += (CENTER_X - n.x) * CENTER_FORCE;
+      n.vy += (CENTER_Y - n.y) * CENTER_FORCE;
+    });
+
+    NODES.forEach(n => {
+      n.vx *= DAMPING; n.vy *= DAMPING;
+      n.x += n.vx; n.y += n.vy;
+      const pad = 30;
+      n.x = Math.max(pad, Math.min(svgW - pad, n.x));
+      n.y = Math.max(pad, Math.min(svgH - pad, n.y));
+    });
+
+    updatePositions();
+    simFrame = requestAnimationFrame(tick);
+  }
+  if (simFrame) cancelAnimationFrame(simFrame);
+  simFrame = requestAnimationFrame(tick);
+}
+
+// Init
+window.addEventListener('load', () => {
+  initPositions();
+  updatePositions();
+  runSim(240);
+  startChat();
+});
+
+window.addEventListener('resize', () => {
+  initPositions();
+  updatePositions();
+  runSim(180);
+});
+
+// ═══════════════════════════════════════════════════════
+//  HIGHLIGHT NODES
+// ═══════════════════════════════════════════════════════
+const AFFECTED_IDS = ['payment-service','notification-service','auth-service','user-portal'];
+const LOG4J_IDS    = ['log4j-core','CVE-2021-44228'];
+
+function highlightNodes(ids, glowClass) {
+  ids.forEach(id => {
+    const el = nodeEls[id];
+    if (!el) return;
+    el.g.classList.add(glowClass);
+    el.circ.setAttribute('stroke-width','2.5');
+  });
+}
+function clearHighlights() {
+  NODES.forEach(n => {
+    const el = nodeEls[n.id];
+    el.g.classList.remove('node-glow-red','node-glow-yellow');
+    el.circ.setAttribute('stroke-width', n.type === 'cve' ? '2' : '1.5');
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  CHAT SEQUENCE
+// ═══════════════════════════════════════════════════════
+const chatEl = document.getElementById('chat-messages');
+
+function mkTime() {
+  const now = new Date();
+  return now.getHours().toString().padStart(2,'0') + ':' +
+         now.getMinutes().toString().padStart(2,'0') + ':' +
+         now.getSeconds().toString().padStart(2,'0');
+}
+
+function appendMsg(html, animate = true) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  const msg = div.firstElementChild;
+  chatEl.appendChild(msg);
+  if (animate) {
+    msg.classList.add('animate-in');
+  }
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return msg;
+}
+
+function showTyping() {
+  const div = document.createElement('div');
+  div.innerHTML = `
+  <div class="typing-indicator show" id="typing-ind">
+    <div class="typing-dot"></div>
+    <div class="typing-dot"></div>
+    <div class="typing-dot"></div>
+    <span class="typing-label">CyberGraph is analyzing…</span>
+  </div>`;
+  chatEl.appendChild(div.firstElementChild);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return document.getElementById('typing-ind');
+}
+
+function removeTyping(el) {
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+}
+
+function showQuerying(text) {
+  const div = document.createElement('div');
+  div.innerHTML = `<div class="query-status" id="qstatus">
+    <div class="query-spinner"></div><span>${text}</span>
+  </div>`;
+  chatEl.appendChild(div.firstElementChild);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return document.getElementById('qstatus');
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function startChat() {
+  await delay(600);
+
+  // ── Message 1: Operator query ──
+  appendMsg(`
+  <div class="msg animate-in">
+    <div class="msg-header">
+      <div class="msg-avatar avatar-op">OP</div>
+      <span class="msg-sender">Operator</span>
+      <span class="msg-time">${mkTime()}</span>
+    </div>
+    <div class="msg-bubble bubble-op">
+      Check if we're affected by Log4Shell
+    </div>
+  </div>`);
+
+  await delay(700);
+
+  // ── Querying status ──
+  const qs1 = showQuerying('Running Text-to-Cypher translation…');
+  await delay(900);
+  qs1.querySelector('span').textContent = 'Executing: MATCH path=(s:Microservice)-[:DEPENDS_ON*]->(l:Library)-[:HAS_VULNERABILITY]->(c:CVE {id:"CVE-2021-44228"}) RETURN s, path…';
+  await delay(1100);
+  removeTyping(qs1);
+
+  // highlight log4j while "searching"
+  highlightNodes(LOG4J_IDS, 'node-glow-yellow');
+  await delay(400);
+
+  // ── Message 2: CyberGraph critical alert ──
+  const t2 = mkTime();
+  const m2 = appendMsg(`
+  <div class="msg animate-in">
+    <div class="msg-header">
+      <div class="msg-avatar avatar-cg">CG</div>
+      <span class="msg-sender">CyberGraph</span>
+      <span class="msg-time">${t2}</span>
+    </div>
+    <div class="msg-bubble bubble-cg critical-alert">
+      <div class="crit-header">
+        <span class="crit-badge">CRITICAL</span>
+        <span class="crit-title">CVE-2021-44228 — Log4Shell</span>
+        <span class="cvss-badge">CVSS 10.0</span>
+      </div>
+      <div style="font-size:12px;color:var(--text-sec);margin-bottom:8px;">
+        4 services in your infrastructure are reachable from this vulnerability via transitive dependency chains.
+      </div>
+      <div class="affected-list">
+        <div class="affected-item" id="ai-payment">
+          <span class="affected-bullet">▶</span>
+          <div>
+            <div><span class="affected-name">payment-service</span><span class="affected-scope">PCI-SCOPED</span></div>
+            <div class="affected-path">via log4j-core 2.14.1 — direct dependency (1 hop)</div>
+          </div>
+        </div>
+        <div class="affected-item" id="ai-notif">
+          <span class="affected-bullet">▶</span>
+          <div>
+            <div><span class="affected-name">notification-service</span></div>
+            <div class="affected-path">via log4j-core 2.14.1 — direct dependency (1 hop)</div>
+          </div>
+        </div>
+        <div class="affected-item" id="ai-auth">
+          <span class="affected-bullet">▶</span>
+          <div>
+            <div><span class="affected-name">auth-service</span></div>
+            <div class="affected-path">via payment-service → log4j-core (2 hops)</div>
+          </div>
+        </div>
+        <div class="affected-item" id="ai-portal">
+          <span class="affected-bullet">▶</span>
+          <div>
+            <div><span class="affected-name">user-portal</span></div>
+            <div class="affected-path">via auth-service → payment-service → log4j-core (3 hops)</div>
+          </div>
+        </div>
+      </div>
+      <div class="rec-box">
+        <strong>Recommended Action</strong>
+        Isolate <code style="color:#fde68a;background:rgba(234,179,8,0.12);padding:1px 5px;border-radius:3px;">payment-service</code> immediately — PCI-scoped with directly exposed dependency.<br>
+        <span style="color:var(--text-sec);font-size:11px;margin-top:4px;display:block;">Type <code style="color:#fde68a">'confirm isolate payment-service'</code> to execute remediation.</span>
+      </div>
+    </div>
+  </div>`);
+
+  // highlight affected services progressively
+  await delay(300);
+  document.getElementById('ai-payment').classList.add('highlight');
+  highlightNodes(['payment-service'], 'node-glow-red');
+  await delay(250);
+  document.getElementById('ai-notif').classList.add('highlight');
+  highlightNodes(['notification-service'], 'node-glow-red');
+  await delay(250);
+  document.getElementById('ai-auth').classList.add('highlight');
+  highlightNodes(['auth-service'], 'node-glow-red');
+  await delay(250);
+  document.getElementById('ai-portal').classList.add('highlight');
+  highlightNodes(['user-portal'], 'node-glow-red');
+
+  await delay(2200);
+
+  // ── Message 3: Operator confirm ──
+  appendMsg(`
+  <div class="msg animate-in">
+    <div class="msg-header">
+      <div class="msg-avatar avatar-op">OP</div>
+      <span class="msg-sender">Operator</span>
+      <span class="msg-time">${mkTime()}</span>
+    </div>
+    <div class="msg-bubble bubble-op">
+      confirm isolate payment-service
+    </div>
+  </div>`);
+
+  await delay(500);
+  const typing = showTyping();
+  await delay(300);
+  removeTyping(typing);
+
+  const qs2 = showQuerying('Dispatching n8n workflow: isolate-service…');
+  await delay(700);
+  qs2.querySelector('span').textContent = 'Applying firewall rule: DENY 10.0.2.1:8080…';
+  await delay(600);
+  qs2.querySelector('span').textContent = 'Updating graph: payment-service → QUARANTINED…';
+  await delay(500);
+  qs2.querySelector('span').textContent = 'Notifying upstream services…';
+  await delay(500);
+  removeTyping(qs2);
+
+  // ── Message 4: CyberGraph success ──
+  appendMsg(`
+  <div class="msg animate-in">
+    <div class="msg-header">
+      <div class="msg-avatar avatar-cg">CG</div>
+      <span class="msg-sender">CyberGraph</span>
+      <span class="msg-time">${mkTime()}</span>
+    </div>
+    <div class="msg-bubble bubble-cg success-alert">
+      <div class="success-header">
+        <span style="font-size:16px;">✓</span>
+        <span class="success-title">Remediation Executed Successfully</span>
+      </div>
+      <div class="action-list">
+        <div class="action-item">
+          <span class="action-icon">→</span>
+          <span>Firewall rule applied: <span class="action-code">DENY 10.0.2.1:8080</span> (payment-service)</span>
+        </div>
+        <div class="action-item">
+          <span class="action-icon">→</span>
+          <span>Node status updated: <span class="action-code">payment-service</span> → <span style="color:var(--red);font-weight:700;">QUARANTINED</span></span>
+        </div>
+        <div class="action-item">
+          <span class="action-icon">→</span>
+          <span>2 upstream services notified: <span class="action-code">auth-service, user-portal</span></span>
+        </div>
+        <div class="action-item" style="margin-top:6px;padding-top:8px;border-top:1px solid #14532d55;">
+          <span class="action-icon">→</span>
+          <span style="color:var(--text-sec);">Remaining exposure: <span style="color:var(--yellow);">notification-service</span> still linked to log4j-core. Recommend patching to v2.17.1.</span>
+        </div>
+      </div>
+    </div>
+  </div>`);
+
+  // pulse payment-service node to quarantined state
+  const psEl = nodeEls['payment-service'];
+  psEl.circ.setAttribute('fill', '#450a0a');
+  psEl.circ.setAttribute('stroke', '#ef4444');
+  psEl.circ.setAttribute('stroke-width', '3');
+  psEl.circ.setAttribute('stroke-dasharray', '4,2');
+}
+</script>
+</body>
+</html>
