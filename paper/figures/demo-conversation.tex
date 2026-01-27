@@ -1,0 +1,27 @@
+\begin{figure}[t]
+\centering
+\begin{tcolorbox}[
+  colback=gray!3,
+  colframe=gray!55,
+  fontupper=\scriptsize\ttfamily,
+  boxrule=0.5pt,
+  arc=2pt,
+  left=3pt, right=3pt, top=2pt, bottom=2pt,
+  title={\scriptsize\sffamily Demo Scenario: Log4Shell},
+  fonttitle=\bfseries\scriptsize\sffamily
+]
+\textbf{Operator:} Which services are affected by Log4Shell?\\[2pt]
+\textbf{System:} Querying the infrastructure graph.\\[2pt]
+{\color{red}\textbf{Result:}} 4 affected services for \texttt{CVE-2021-44228}.\\[2pt]
+\textbf{Affected services:}\\
+\hspace*{0.5em}\textbullet\ \texttt{payment-service} (PCI), direct dependency on \texttt{log4j-core}\\
+\hspace*{0.5em}\textbullet\ \texttt{notification-service}, direct dependency on \texttt{log4j-core}\\
+\hspace*{0.5em}\textbullet\ \texttt{auth-service}, reachable in 2 hops\\
+\hspace*{0.5em}\textbullet\ \texttt{user-portal}, reachable in 3 hops\\[2pt]
+\textbf{System:} Recommended action: isolate \texttt{payment-service}.\\[2pt]
+\textbf{Operator:} Confirm isolation.\\[2pt]
+\textbf{System:} Action executed. Service state updated to \texttt{quarantined}.
+\end{tcolorbox}
+\caption{Compact interaction shown during the live demo.}
+\label{fig:demo}
+\end{figure}

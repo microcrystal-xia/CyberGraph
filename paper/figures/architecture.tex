@@ -1,0 +1,30 @@
+\begin{figure}[t]
+\centering
+\resizebox{0.96\columnwidth}{!}{%
+\begin{tikzpicture}[
+    node distance=0.8cm and 1.25cm,
+    >=Latex,
+    box/.style={draw, rounded corners=2pt, minimum width=1.7cm, minimum height=0.72cm, align=center, font=\small},
+    userbox/.style={box, fill=gray!12},
+    llmbox/.style={box, fill=blue!10},
+    dbbox/.style={box, fill=green!10},
+    actbox/.style={box, fill=orange!10},
+    arrow/.style={->, thick},
+    lbl/.style={font=\scriptsize, midway}
+]
+\node[userbox] (user) {Operator\\Interface};
+\node[llmbox, right=of user] (translator) {Query\\Translator};
+\node[dbbox, right=of translator] (graph) {Neo4j\\Graph};
+\node[llmbox, below=0.9cm of graph] (analysis) {Impact\\Analysis};
+\node[actbox, below=0.9cm of translator] (workflow) {Workflow\\Engine};
+\draw[arrow] (user) -- node[lbl, above] {NL query} (translator);
+\draw[arrow] (translator) -- node[lbl, above] {Cypher} (graph);
+\draw[arrow] (graph) -- node[lbl, right] {results} (analysis);
+\draw[arrow] (analysis) -- node[lbl, below] {recommendation} (workflow);
+\draw[arrow] (workflow) -- node[lbl, left] {response} (user);
+\draw[arrow, dashed] (workflow) -- node[lbl, below, sloped] {state update} (graph);
+\end{tikzpicture}%
+}
+\caption{Overview of \sysname. A natural-language security query is translated into Cypher, executed on the infrastructure graph, and linked to an optional remediation workflow.}
+\label{fig:arch}
+\end{figure}
